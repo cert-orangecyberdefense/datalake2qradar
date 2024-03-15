@@ -1,0 +1,14 @@
+asyncio
+black
+datalake-scripts
+datetime
+ipaddress
+msal
+pytest
+pytest-asyncio
+python-dotenv
+ratelimit
+requests
+schedule
+stix2
+wheel
