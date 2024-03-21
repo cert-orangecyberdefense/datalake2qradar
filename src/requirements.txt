@@ -1,8 +1,5 @@
 asyncio
 datalake-scripts
-datetime
-pytest
-pytest-asyncio
 python-dotenv
 requests
 schedule
