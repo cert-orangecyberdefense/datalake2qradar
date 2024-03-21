@@ -41,6 +41,7 @@ def main():
         QRADAR_TOKEN,
         QRADAR_REFERENCE_NAME,
         True if QRADAR_SSL_VERIFY == "true" else False,
+        logger,
     )
 
     # create queue
