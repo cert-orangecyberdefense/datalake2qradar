@@ -4,3 +4,4 @@ python-dotenv
 requests
 schedule
 wheel
+urllib3

@@ -1,11 +1,11 @@
 import asyncio
 import config
-import json
 import time
 import os
 import threading
 import requests
-from datetime import datetime, timedelta
+import re
+import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 from queue import Queue
 from constants import ATOM_TYPE, ATOM_VALUE, SOURCE_SYSTEM_NAME
@@ -54,8 +54,50 @@ class QradarReference:
             verify=self.qradar_ssl_verify,
         )
         return r.status_code < 300
+    
+    def get_all_reference_sets(self):
+        r = requests.get(
+            f"{self.qradar_url}/api/reference_data/sets",
+            headers=self.headers,
+            verify=self.qradar_ssl_verify,
+        )
 
-    def create(self, id: str, payload: dict):
+        reference_sets_datalake = set()
+
+        if r.status_code == 200:
+            reference_sets = r.json()
+            for ref_set in reference_sets:
+                if re.match(r"^datalake_[A-Za-z]+$", ref_set["name"]):
+                    reference_sets_datalake.add(ref_set["name"])
+
+            return reference_sets_datalake
+        else:
+            r.raise_for_status()
+
+    def get_reference_sets_data(self):
+        reference_sets_data = []
+        reference_sets = self.get_all_reference_sets()
+
+        for ref in reference_sets:
+            r = requests.get(
+                f"{self.qradar_url}/api/reference_data/sets/{ref}",
+                headers=self.headers,
+                verify=self.qradar_ssl_verify,
+            )
+
+            if r.status_code == 200:
+                reference_type = re.search(r"datalake_([a-zA-Z0-9]+)", ref).group(1)
+                if "data" in r.json():
+                    data = r.json()["data"] 
+                    for ioc in data:
+                        reference_sets_data.append([reference_type, ioc["value"]])
+            else:
+                self.logger.debug(f"reference set {ref} does not exist")
+
+        return reference_sets_data
+                
+
+    def create(self, id: str, payload):
         r = requests.post(
             f"{self.collection_url}_{self.get_type(payload)}",
             {"value": payload[ATOM_VALUE], "source": SOURCE_SYSTEM_NAME},
@@ -65,8 +107,24 @@ class QradarReference:
         if r.status_code == 404:
             self.create_reference(self.get_type(payload))
             self.create(id, payload)
+        elif r.status_code == 200:
+            self.logger.debug(f"{payload[ATOM_VALUE]} created")
         else:
-            r.raise_for_status()
+            self.logger.error(f"Error {r.status_code} during creation of {payload[ATOM_VALUE]}")
+
+    def delete(self, id: str, payload):
+        encoded_value = urllib.parse.quote(payload[ATOM_VALUE], safe='')
+        double_encoded_value = urllib.parse.quote(encoded_value, safe='')
+
+        r = requests.delete(
+            f"{self.collection_url}_{self.get_type(payload)}/{double_encoded_value}",
+            headers=self.headers,
+            verify=self.qradar_ssl_verify,
+        )
+        if r.status_code == 200:
+            self.logger.debug(f"{payload[ATOM_VALUE]} deleted")
+        else:
+            self.logger.error(f"Error {r.status_code} during deletion of {payload[ATOM_VALUE]}")
 
 
 class Datalake2Qradar:
@@ -96,10 +154,12 @@ class Datalake2Qradar:
                 self.logger.debug("Queue is full, waiting...")
                 time.sleep(1)
 
-    def produce(self, indicators):
+    def produce(self, messages):
         # Produce indicators to queue
-        for indicator in indicators:
-            self.produce_ioc({"ioc": indicator})
+        for message in messages:
+            if message["indicators"]:
+                for indicator in message["indicators"]:
+                    self.produce_ioc({"action": message["action"], "ioc": indicator})
 
     def start_consumers(self):
         self.logger.info(f"starting {self.consumer_count} consumer threads")
@@ -107,8 +167,8 @@ class Datalake2Qradar:
             for _ in range(self.consumer_count):
                 executor.submit(self.consume)
 
-    def start_producer(self, indicators):
-        producer_thread = threading.Thread(target=self.produce, args=(indicators,))
+    def start_producer(self, messages):
+        producer_thread = threading.Thread(target=self.produce, args=(messages,))
         producer_thread.start()
         self.logger.info("starting producer thread")
 
@@ -126,11 +186,14 @@ class Datalake2Qradar:
         while True:
             msg = self.queue.get()
             payload = msg["ioc"]
+            action = msg["action"]
             atom_value = payload[ATOM_VALUE]
 
-            self.logger.debug(f"processing message with value {atom_value}")
-            self.qradar_reference.create(id, payload)
-            self.logger.debug(f"reference_set item with value {atom_value} created")
+            if action == "add":
+                self.qradar_reference.create(id, payload)
+            elif action == "delete":
+                self.qradar_reference.delete(id, payload)
+            
 
     def _getDatalakeThreats(self):
         query_fields = ["atom_type", "atom_value"]
@@ -179,14 +242,54 @@ class Datalake2Qradar:
             indicators.extend(bulk_search_result["results"])
 
         self.logger.info("Indicators generated")
+
         return indicators
+    
+    def diff_indicators(self, bulk_searches_results):
+
+        reference_sets_indicators = self.qradar_reference.get_reference_sets_data()
+        indicators = self._generateIndicators(bulk_searches_results)
+        
+        indicators_tuple = []
+        reference_sets_indicators_tuple = []
+
+        for ioc in indicators:
+            indicators_tuple.append(tuple(ioc))
+
+        if reference_sets_indicators:
+            for ioc in reference_sets_indicators:
+                reference_sets_indicators_tuple.append(tuple(ioc))
+
+            added_indicators = set(indicators_tuple) - set(reference_sets_indicators_tuple)
+            removed_indicators = set(reference_sets_indicators_tuple) - set(indicators_tuple)
+
+            return [
+                {
+                    "action": "add",
+                    "indicators": added_indicators
+                },
+                {
+                    "action": "delete",
+                    "indicators": removed_indicators
+                }
+            ]
+        
+        else:
+            return [
+                {
+                    "action": "add",
+                    "indicators": indicators
+                }
+            ]
+
+
+
 
     def uploadIndicatorsToQradar(self):
         bulk_searches_results = self._getDatalakeThreats()
-        indicators = self._generateIndicators(bulk_searches_results)
-
+        messages = self.diff_indicators(bulk_searches_results)
         # Start producer
-        self.start_producer(indicators)
+        self.start_producer(messages)
 
         # Start consumers
         self.start()
