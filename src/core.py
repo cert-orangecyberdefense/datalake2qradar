@@ -51,6 +51,10 @@ def main():
     datalake2qradar = Datalake2Qradar(
         reference_set, queue, CONNECTOR_CONSUMER_COUNT, logger
     )
+    
+    # Start consumers
+    datalake2qradar.start()
+
     if config.run_as_cron:
         schedule.every(config.upload_frequency).hours.do(
             datalake2qradar.uploadIndicatorsToQradar

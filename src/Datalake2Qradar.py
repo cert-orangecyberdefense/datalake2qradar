@@ -144,6 +144,7 @@ class Datalake2Qradar:
         self.queue = queue
         self.consumer_count = consumer_count
         self.logger = logger
+        self.executor = ThreadPoolExecutor(max_workers=self.consumer_count)
 
     def produce_ioc(self, msg):
         while True:
@@ -163,9 +164,8 @@ class Datalake2Qradar:
 
     def start_consumers(self):
         self.logger.info(f"starting {self.consumer_count} consumer threads")
-        with ThreadPoolExecutor() as executor:
-            for _ in range(self.consumer_count):
-                executor.submit(self.consume)
+        for _ in range(self.consumer_count):
+            self.executor.submit(self.consume)
 
     def start_producer(self, messages):
         producer_thread = threading.Thread(target=self.produce, args=(messages,))
@@ -187,7 +187,6 @@ class Datalake2Qradar:
             msg = self.queue.get()
             payload = msg["ioc"]
             action = msg["action"]
-            atom_value = payload[ATOM_VALUE]
 
             if action == "add":
                 self.qradar_reference.create(id, payload)
@@ -290,8 +289,5 @@ class Datalake2Qradar:
         messages = self.diff_indicators(bulk_searches_results)
         # Start producer
         self.start_producer(messages)
-
-        # Start consumers
-        self.start()
-
+        
         return
