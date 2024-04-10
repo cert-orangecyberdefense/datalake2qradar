@@ -5,10 +5,16 @@ import os
 import threading
 import requests
 import re
+from ratelimit import limits, sleep_and_retry
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 from queue import Queue
-from constants import REFERENCE_SET_NAME, ATOM_VALUE, SOURCE_SYSTEM_NAME
+from constants import (
+    REQUESTS_PER_MINUTE,
+    REFERENCE_SET_NAME,
+    ATOM_VALUE,
+    SOURCE_SYSTEM_NAME,
+)
 import requests
 from datalake import Datalake, Output
 from dotenv import load_dotenv
@@ -96,6 +102,8 @@ class QradarReference:
 
         return reference_sets_data
 
+    @sleep_and_retry
+    @limits(calls=REQUESTS_PER_MINUTE, period=60)
     def create(self, id: str, payload):
         r = requests.post(
             f"{self.collection_url}_{self.get_type(payload)}",

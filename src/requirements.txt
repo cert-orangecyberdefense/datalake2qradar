@@ -5,3 +5,4 @@ requests
 schedule
 wheel
 urllib3
+ratelimit
