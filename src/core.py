@@ -51,7 +51,7 @@ def main():
     datalake2qradar = Datalake2Qradar(
         reference_set, queue, CONNECTOR_CONSUMER_COUNT, logger
     )
-    
+
     # Start consumers
     datalake2qradar.start()
 

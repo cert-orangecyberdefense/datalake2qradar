@@ -8,7 +8,7 @@ import re
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 from queue import Queue
-from constants import ATOM_TYPE, ATOM_VALUE, SOURCE_SYSTEM_NAME
+from constants import REFERENCE_SET_NAME, ATOM_VALUE, SOURCE_SYSTEM_NAME
 import requests
 from datalake import Datalake, Output
 from dotenv import load_dotenv
@@ -45,7 +45,7 @@ class QradarReference:
         return True
 
     def get_type(self, payload):
-        return payload[ATOM_TYPE]
+        return payload[REFERENCE_SET_NAME]
 
     def create_reference(self, name: str):
         r = requests.post(
@@ -54,7 +54,7 @@ class QradarReference:
             verify=self.qradar_ssl_verify,
         )
         return r.status_code < 300
-    
+
     def get_all_reference_sets(self):
         r = requests.get(
             f"{self.qradar_url}/api/reference_data/sets",
@@ -67,7 +67,7 @@ class QradarReference:
         if r.status_code == 200:
             reference_sets = r.json()
             for ref_set in reference_sets:
-                if re.match(r"^datalake_[A-Za-z]+$", ref_set["name"]):
+                if re.match(r"^datalake_[A-Za-z0-9_]+$", ref_set["name"]):
                     reference_sets_datalake.add(ref_set["name"])
 
             return reference_sets_datalake
@@ -86,16 +86,15 @@ class QradarReference:
             )
 
             if r.status_code == 200:
-                reference_type = re.search(r"datalake_([a-zA-Z0-9]+)", ref).group(1)
+                reference_type = re.search(r"datalake_([A-Za-z0-9_]+)", ref).group(1)
                 if "data" in r.json():
-                    data = r.json()["data"] 
+                    data = r.json()["data"]
                     for ioc in data:
                         reference_sets_data.append([reference_type, ioc["value"]])
             else:
                 self.logger.debug(f"reference set {ref} does not exist")
 
         return reference_sets_data
-                
 
     def create(self, id: str, payload):
         r = requests.post(
@@ -110,11 +109,13 @@ class QradarReference:
         elif r.status_code == 200:
             self.logger.debug(f"{payload[ATOM_VALUE]} created")
         else:
-            self.logger.error(f"Error {r.status_code} during creation of {payload[ATOM_VALUE]}")
+            self.logger.error(
+                f"Error {r.status_code} during creation of {payload[ATOM_VALUE]}"
+            )
 
     def delete(self, id: str, payload):
-        encoded_value = urllib.parse.quote(payload[ATOM_VALUE], safe='')
-        double_encoded_value = urllib.parse.quote(encoded_value, safe='')
+        encoded_value = urllib.parse.quote(payload[ATOM_VALUE], safe="")
+        double_encoded_value = urllib.parse.quote(encoded_value, safe="")
 
         r = requests.delete(
             f"{self.collection_url}_{self.get_type(payload)}/{double_encoded_value}",
@@ -124,7 +125,9 @@ class QradarReference:
         if r.status_code == 200:
             self.logger.debug(f"{payload[ATOM_VALUE]} deleted")
         else:
-            self.logger.error(f"Error {r.status_code} during deletion of {payload[ATOM_VALUE]}")
+            self.logger.error(
+                f"Error {r.status_code} during deletion of {payload[ATOM_VALUE]}"
+            )
 
 
 class Datalake2Qradar:
@@ -192,10 +195,9 @@ class Datalake2Qradar:
                 self.qradar_reference.create(id, payload)
             elif action == "delete":
                 self.qradar_reference.delete(id, payload)
-            
 
     def _getDatalakeThreats(self):
-        query_fields = ["atom_type", "atom_value"]
+        query_fields = ["atom_value"]
 
         dtl = Datalake(
             username=os.environ["OCD_DTL_USERNAME"],
@@ -237,18 +239,21 @@ class Datalake2Qradar:
         self.logger.info("Generating indicators ...")
         indicators = []
 
-        for bulk_search_result in bulk_searches_results:
-            indicators.extend(bulk_search_result["results"])
+        for index, bulk_search_result in enumerate(bulk_searches_results):
+            reference_set_name = config.datalake_queries[index]["reference_set_name"]
+
+            for threat in bulk_search_result["results"]:
+                threat.insert(0, reference_set_name)
+                indicators.append(threat)
 
         self.logger.info("Indicators generated")
 
         return indicators
-    
-    def diff_indicators(self, bulk_searches_results):
 
+    def diff_indicators(self, bulk_searches_results):
         reference_sets_indicators = self.qradar_reference.get_reference_sets_data()
         indicators = self._generateIndicators(bulk_searches_results)
-        
+
         indicators_tuple = []
         reference_sets_indicators_tuple = []
 
@@ -259,35 +264,25 @@ class Datalake2Qradar:
             for ioc in reference_sets_indicators:
                 reference_sets_indicators_tuple.append(tuple(ioc))
 
-            added_indicators = set(indicators_tuple) - set(reference_sets_indicators_tuple)
-            removed_indicators = set(reference_sets_indicators_tuple) - set(indicators_tuple)
+            added_indicators = set(indicators_tuple) - set(
+                reference_sets_indicators_tuple
+            )
+            removed_indicators = set(reference_sets_indicators_tuple) - set(
+                indicators_tuple
+            )
 
             return [
-                {
-                    "action": "add",
-                    "indicators": added_indicators
-                },
-                {
-                    "action": "delete",
-                    "indicators": removed_indicators
-                }
+                {"action": "add", "indicators": added_indicators},
+                {"action": "delete", "indicators": removed_indicators},
             ]
-        
+
         else:
-            return [
-                {
-                    "action": "add",
-                    "indicators": indicators
-                }
-            ]
-
-
-
+            return [{"action": "add", "indicators": indicators}]
 
     def uploadIndicatorsToQradar(self):
         bulk_searches_results = self._getDatalakeThreats()
         messages = self.diff_indicators(bulk_searches_results)
         # Start producer
         self.start_producer(messages)
-        
+
         return
