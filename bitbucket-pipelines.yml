@@ -4,8 +4,10 @@ pipelines:
       - step:
           name: Mirror Master Branch to GitHub
           image: alpine/git:latest
+          clone:
+            enabled: true
           script:
-            - git clone --mirror git@bitbucket.org:ocd-dev/datalake2qradar.git
+            - git clone git@bitbucket.org:ocd-dev/datalake2qradar.git
             - cd datalake2qradar
             - git remote add github git@github.com:cert-orangecyberdefense/datalake2qradar.git
-            - git push --mirror github
+            - git push github main:main
