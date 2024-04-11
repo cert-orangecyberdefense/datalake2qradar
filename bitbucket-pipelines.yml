@@ -1,6 +1,6 @@
 pipelines:
   branches:
-    master:
+    main:
       - step:
           name: Mirror Master Branch to GitHub
           image: alpine/git:latest
