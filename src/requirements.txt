@@ -1,0 +1,8 @@
+asyncio
+datalake-scripts
+python-dotenv
+requests
+schedule
+wheel
+urllib3
+ratelimit

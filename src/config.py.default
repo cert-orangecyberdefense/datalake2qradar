@@ -1,0 +1,18 @@
+# Datalake queries (bulk search) with query_hash
+datalake_queries = [
+  {
+    "query_hash":"14d206c952ca80e8a5de09cb2ed21d40",
+    "reference_set_name":"malicious_ips"
+  },
+  {
+    "query_hash":"2e310c7f15ce1887b024e275fc05b19a",
+    "reference_set_name":"peerpressure_cobalt_c2_ips"
+  }
+]
+
+# Cronicity of the integration (in hours)
+run_as_cron = False
+upload_frequency = 1 
+
+# Logger config
+verbose_log = False
