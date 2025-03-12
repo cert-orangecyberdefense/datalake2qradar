@@ -208,8 +208,10 @@ class Datalake2Qradar:
         query_fields = ["atom_value"]
 
         dtl = Datalake(
-            username=os.environ["OCD_DTL_USERNAME"],
-            password=os.environ["OCD_DTL_PASSWORD"],
+            username=os.environ.get("OCD_DTL_USERNAME"),
+            password=os.environ.get("OCD_DTL_PASSWORD"),
+            longterm_token=os.environ.get("OCD_DTL_LONGTERM_TOKEN"),
+            env=os.environ.get("OCD_DTL_ENV", "prod"),
         )
         coroutines = []
 
