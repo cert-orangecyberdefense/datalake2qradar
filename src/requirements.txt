@@ -1,5 +1,5 @@
 asyncio
-datalake-scripts==3.0.0rc3
+datalake-scripts==3.0.0rc7
 python-dotenv
 requests
 schedule
