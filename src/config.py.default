@@ -1,12 +1,12 @@
 # Datalake queries (bulk search) with query_hash
 datalake_queries = [
   {
-    "query_hash":"14d206c952ca80e8a5de09cb2ed21d40",
+    "query_hash":"c879d177c513bee8fbc9586d6d2a231e",
     "reference_set_name":"malicious_ips"
   },
   {
-    "query_hash":"2e310c7f15ce1887b024e275fc05b19a",
-    "reference_set_name":"peerpressure_cobalt_c2_ips"
+    "query_hash":"a5a5080ef035db3dd0b36866f221a2b8",
+    "reference_set_name":"peerpressure_malicious_ips"
   }
 ]
 
