@@ -1,11 +1,11 @@
 # Datalake queries (bulk search) with query_hash
 datalake_queries = [
   {
-    "query_hash":"c879d177c513bee8fbc9586d6d2a231e",
+    "query_hash":"19567912495f7a658327cc8807fdf8bb",
     "reference_set_name":"malicious_ips"
   },
   {
-    "query_hash":"a5a5080ef035db3dd0b36866f221a2b8",
+    "query_hash":"2ab8d79b4ad91c472a23337d25ff2741",
     "reference_set_name":"peerpressure_malicious_ips"
   }
 ]
